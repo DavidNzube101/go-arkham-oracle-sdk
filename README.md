@@ -24,13 +24,15 @@ import (
 
 func main() {
 	// 1. Initialize the client
+	// By default, it uses CoinGecko as the raw price data source.
 	oracleClient := oraclesdk.NewClient("https://arkham-dvpn.vercel.app/api/price")
 
 	// --- Example 1: Fetching from a protected endpoint ---
 	fmt.Println("--- Fetching from protected endpoint ---")
-	token := "solana"
-	trustedKey := "your-trusted-client-key"
-	signedData, err := oracleClient.FetchSignedPrice(token, trustedKey)
+
+token := "solana"
+trustedKey := "your-trusted-client-key"
+signedData, err := oracleClient.FetchSignedPrice(token, trustedKey)
 	if err != nil {
 		log.Fatalf("Failed to fetch signed price: %v", err)
 	}
@@ -47,7 +49,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to fetch signed price from public endpoint: %v", err)
 	}
-	fmt.Printf("Successfully fetched data for %s:\n", publicSignedData.Price)
+	fmt.Printf("Successfully fetched data for %s:\n", token)
+	fmt.Printf("- Price: %d\n", publicSignedData.Price)
+
+
+	// --- Example 3: Using a custom data source ---
+	fmt.Println("\n--- Using a custom data source ---")
+	customOracleClient := oraclesdk.NewClient(
+		"https://arkham-dvpn.vercel.app/api/price",
+		"https://my-custom-price-api.com/prices", // Your custom data source URL
+	)
+	customSignedData, err := customOracleClient.FetchSignedPrice(token, trustedKey)
+	if err != nil {
+		log.Fatalf("Failed to fetch signed price from custom source: %v", err)
+	}
+	fmt.Printf("Successfully fetched data from custom source for %s:\n", token)
+	fmt.Printf("- Price: %d\n", customSignedData.Price)
 
 
 	// --- Recreate the message hash for a transaction ---
@@ -61,6 +78,4 @@ func main() {
 	
 	// The signature and messageHash can now be used to build a transaction.
 }
-```
-
 ```

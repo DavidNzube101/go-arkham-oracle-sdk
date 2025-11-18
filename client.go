@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -20,29 +21,77 @@ type SignedPriceData struct {
 	Signature []byte
 }
 
-// internal struct for JSON unmarshalling
+// internal struct for JSON unmarshalling of oracle API response
 type priceResponse struct {
 	Price     string `json:"price"`
 	Timestamp string `json:"timestamp"`
 	Signature string `json:"signature"`
 }
 
+// internal struct for JSON unmarshalling of CoinGecko-like price data
+type CoinGeckoPriceResponse map[string]struct {
+	Usd float64 `json:"usd"`
+}
+
 // Client is a client for the Arkham Oracle API.
 type Client struct {
 	BaseURL string
+	DataSourceURL string // Optional: URL for an alternative data source
 }
 
 // NewClient creates a new oracle client.
 // baseURL is the full base URL of the price API endpoint (e.g., "https://arkham-dvpn.vercel.app/api/price").
-func NewClient(baseURL string) *Client {
-	return &Client{BaseURL: baseURL}
+// dataSourceURL is optional. If provided, FetchSignedPrice will use this URL to get raw price data.
+func NewClient(baseURL string, dataSourceURL ...string) *Client {
+	client := &Client{BaseURL: baseURL}
+	if len(dataSourceURL) > 0 && dataSourceURL[0] != "" {
+		client.DataSourceURL = dataSourceURL[0]
+	}
+	return client
 }
 
 // FetchSignedPrice fetches signed price data from the oracle.
 // The trustedKey is optional. If provided, it will be sent as a query parameter.
 func (c *Client) FetchSignedPrice(token string, trustedKey ...string) (*SignedPriceData, error) {
+	// Determine the URL to fetch the raw price data from
+	priceSourceURL := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?ids=%s&vs_currencies=usd", token)
+	if c.DataSourceURL != "" {
+		// Assuming the custom data source uses similar query parameters
+		priceSourceURL = fmt.Sprintf("%s?ids=%s&vs_currencies=usd", c.DataSourceURL, token)
+	}
+
+	// Fetch raw price data from the determined source
+	priceResp, err := http.Get(priceSourceURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch raw price data from %s: %w", priceSourceURL, err)
+	}
+	defer priceResp.Body.Close()
+
+	if priceResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("raw price data source returned non-200 status: %s", priceResp.Status)
+	}
+
+	var rawPriceData CoinGeckoPriceResponse
+	if err := json.NewDecoder(priceResp.Body).Decode(&rawPriceData); err != nil {
+		return nil, fmt.Errorf("failed to decode raw price data: %w", err)
+	}
+
+	priceFloat := rawPriceData[token].Usd
+	if priceFloat == 0 { // CoinGecko returns 0 if token not found
+		return nil, fmt.Errorf("price for token '%s' not found in data source response", token)
+	}
+
+	// Convert price to micro-units (6 decimals) as a uint64
+	priceU64 := uint64(priceFloat * 1_000_000)
+	timestampI64 := time.Now().Unix()
+
+	// --------------------------------------------------------------------
+	// Now, call the oracle API to get the signed data
+	// --------------------------------------------------------------------
 	params := url.Values{}
 	params.Add("token", token)
+	params.Add("price", strconv.FormatUint(priceU64, 10))
+	params.Add("timestamp", strconv.FormatInt(timestampI64, 10))
 	if len(trustedKey) > 0 && trustedKey[0] != "" {
 		params.Add("trustedClientKey", trustedKey[0])
 	}
@@ -50,7 +99,7 @@ func (c *Client) FetchSignedPrice(token string, trustedKey ...string) (*SignedPr
 
 	resp, err := http.Get(reqURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call price API: %w", err)
+		return nil, fmt.Errorf("failed to call oracle API: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -59,12 +108,12 @@ func (c *Client) FetchSignedPrice(token string, trustedKey ...string) (*SignedPr
 			Error string `json:"error"`
 		}
 		json.NewDecoder(resp.Body).Decode(&errorBody)
-		return nil, fmt.Errorf("price API returned non-200 status: %s - %s", resp.Status, errorBody.Error)
+		return nil, fmt.Errorf("oracle API returned non-200 status: %s - %s", resp.Status, errorBody.Error)
 	}
 
 	var rawResp priceResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rawResp); err != nil {
-		return nil, fmt.Errorf("failed to decode price API response: %w", err)
+		return nil, fmt.Errorf("failed to decode oracle API response: %w", err)
 	}
 
 	// Parse the string data into the correct types
