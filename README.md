@@ -5,7 +5,7 @@ The `go-arkham-oracle-sdk` provides a robust client and server for interacting w
 ## Installation
 
 ```bash
-go get github.com/arkham-org/go-arkham-oracle-sdk
+go get github.com/DavidNzube101/go-arkham-oracle-sdk
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ import (
 	"log"
 	"os"
 
-	oraclesdk "github.com/arkham-org/go-arkham-oracle-sdk"
+	oraclesdk "github.com/DavidNzube101/go-arkham-oracle-sdk"
 )
 
 func main() {
@@ -104,7 +104,7 @@ import (
 	"os"
 	"strings"
 
-	oraclesdk "github.com/arkham-org/go-arkham-oracle-sdk"
+	oraclesdk "github.com/DavidNzube101/go-arkham-oracle-sdk"
 )
 
 func main() {
