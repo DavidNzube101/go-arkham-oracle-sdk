@@ -1,4 +1,4 @@
-module github.com/arkham-dvpn/go-arkham-oracle-sdk
+module github.com/DavidNzube101/go-arkham-oracle-sdk
 
 go 1.24.4
 
