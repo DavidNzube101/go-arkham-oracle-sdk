@@ -14,23 +14,11 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// SignedPriceData holds the data returned from the oracle API.
-type SignedPriceData struct {
-	Price     uint64
-	Timestamp int64
-	Signature []byte
-}
-
 // internal struct for JSON unmarshalling of oracle API response
 type priceResponse struct {
 	Price     string `json:"price"`
 	Timestamp string `json:"timestamp"`
 	Signature string `json:"signature"`
-}
-
-// internal struct for JSON unmarshalling of CoinGecko-like price data
-type CoinGeckoPriceResponse map[string]struct {
-	Usd float64 `json:"usd"`
 }
 
 // Client is a client for the Arkham Oracle API.

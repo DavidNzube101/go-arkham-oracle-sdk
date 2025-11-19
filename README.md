@@ -1,6 +1,6 @@
 # Arkham Oracle SDK (Go)
 
-The `go-arkham-oracle-sdk` provides a robust client for interacting with a custom verifiable off-chain oracle. This SDK simplifies the process of fetching cryptographically signed price data, ensuring authenticity and integrity for Go applications that need to deliver this data to critical contexts like smart contracts.
+The `go-arkham-oracle-sdk` provides a robust client and server for interacting with a custom verifiable off-chain oracle. This SDK simplifies the process of fetching and serving cryptographically signed price data, ensuring authenticity and integrity for Go applications that need to deliver this data to critical contexts like smart contracts.
 
 ## Installation
 
@@ -10,9 +10,9 @@ go get github.com/arkham-org/go-arkham-oracle-sdk
 
 ## Usage
 
-The client helps you fetch the signed price data from the oracle and reconstruct the message hash that was signed. This is necessary for building the `Ed25519Program` instruction required by compatible smart contracts.
+### For Clients: Fetching Signed Prices
 
-### Basic Client Usage
+The client helps you fetch the signed price data from an oracle and reconstruct the message hash that was signed. This is necessary for building the `Ed25519Program` instruction required by compatible smart contracts.
 
 ```go
 package main
@@ -20,6 +20,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	oraclesdk "github.com/arkham-org/go-arkham-oracle-sdk"
 )
@@ -31,9 +32,12 @@ func main() {
 
 	// --- Example 1: Fetching from a protected endpoint ---
 	fmt.Println("--- Fetching from protected endpoint ---")
-
-token := "solana"
-trustedKey := "your-trusted-client-key" // This key must be known by the oracle server
+	token := "solana"
+	trustedKey := os.Getenv("ORACLE_CLIENT_TRUSTED_KEY") // This key must be known by the oracle server
+	if trustedKey == "" {
+		log.Println("Warning: ORACLE_CLIENT_TRUSTED_KEY not set, assuming public endpoint.")
+	}
+	
 signedData, err := oracleClient.FetchSignedPrice(token, trustedKey)
 	if err != nil {
 		log.Fatalf("Failed to fetch signed price: %v", err)
@@ -84,55 +88,64 @@ signedData, err := oracleClient.FetchSignedPrice(token, trustedKey)
 }
 ```
 
-### Example: Serving Signed Data via a Go Webserver
+### For Servers: Creating an Oracle API
 
-This example demonstrates how a Go backend could fetch signed price data and then expose it via its own API endpoint.
+You can easily create a verifiable oracle API endpoint using the `NewOracleHandler` function. This allows your Go application to act as a price oracle, signing data for clients.
 
 ```go
 package main
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	oraclesdk "github.com/arkham-org/go-arkham-oracle-sdk"
 )
 
 func main() {
-	// Initialize the oracle client
-	// Replace with your actual oracle API base URL
-	oracleClient := oraclesdk.NewClient("https://arkham-dvpn.vercel.app/api/price")
+	// 1. Load your 64-byte Ed25519 private key
+	// Example: ORACLE_PRIVATE_KEY="[56,120,167,...,215,160,71]"
+	privateKeyStr := os.Getenv("ORACLE_PRIVATE_KEY")
+	if privateKeyStr == "" {
+		log.Fatal("ORACLE_PRIVATE_KEY environment variable is not set.")
+	}
+	var privateKeyBytes []byte
+	if err := json.Unmarshal([]byte(privateKeyStr), &privateKeyBytes); err != nil {
+		log.Fatalf("Failed to parse ORACLE_PRIVATE_KEY: %v", err)
+	}
+	oraclePrivateKey := ed25519.PrivateKey(privateKeyBytes)
 
-	// (Optional) Get trusted client key from environment
-	trustedClientKey := os.Getenv("ORACLE_CLIENT_TRUSTED_KEY")
-	if trustedClientKey == "" {
-		log.Println("Warning: ORACLE_CLIENT_TRUSTED_KEY not set, fetching from public endpoint.")
+	// 2. (Optional) Load trusted client keys
+	// Example: TRUSTED_CLIENT_KEYS="key1,key2,key3"
+	trustedClientKeysStr := os.Getenv("TRUSTED_CLIENT_KEYS")
+	var trustedClientKeys []string
+	if trustedClientKeysStr != "" {
+		trustedClientKeys = strings.Split(trustedClientKeysStr, ",")
 	}
 
-	http.HandleFunc("/signed-price", func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
-		if token == "" {
-			http.Error(w, "Missing 'token' query parameter", http.StatusBadRequest)
-			return
-		}
+	// 3. (Optional) Specify a custom data source URL
+	dataSourceURL := os.Getenv("DATA_SOURCE_URL") // e.g., "https://my-custom-price-api.com/prices"
 
-		// Fetch signed price data
-		signedData, err := oracleClient.FetchSignedPrice(token, trustedClientKey)
-		if err != nil {
-			log.Printf("Error fetching signed price for %s: %v", token, err)
-			http.Error(w, "Failed to fetch signed price", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(signedData)
+	// 4. Create the oracle handler
+	oracleHandler, err := oraclesdk.NewOracleHandler(oraclesdk.OracleHandlerOptions{
+		OraclePrivateKey:  oraclePrivateKey,
+		TrustedClientKeys: trustedClientKeys, // Omit this field to make the endpoint public
+		DataSourceURL:     dataSourceURL,     // Omit this field to use CoinGecko by default
 	})
+	if err != nil {
+		log.Fatalf("Failed to create oracle handler: %v", err)
+	}
+
+	// 5. Set up the HTTP server
+	http.Handle("/api/price", oracleHandler)
 
 	port := ":8080"
-	fmt.Printf("Go web server serving signed prices on http://localhost%s/signed-price\n", port)
+	fmt.Printf("Go Oracle Server running on http://localhost%s/api/price\n", port)
 	log.Fatal(http.ListenAndServe(port, nil))
 }
 ```
@@ -146,8 +159,5 @@ This SDK is ideal for scenarios where:
 *   **Gaming & NFTs:** Integrating real-world asset prices or dynamic game parameters into blockchain-based games or NFT marketplaces.
 *   **Supply Chain & Logistics:** Verifying real-time commodity prices or sensor data on-chain.
 *   **Any Smart Contract Requiring External Data:** When a smart contract needs to react to off-chain information, this oracle provides a cryptographically secure bridge.
-
-```
-
 
 ## Author: (David Nzube)[https://github.com/DavidNzube101]
