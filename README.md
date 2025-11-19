@@ -28,7 +28,7 @@ import (
 func main() {
 	// 1. Initialize the client
 	// By default, the oracle API uses CoinGecko as the raw price data source.
-	oracleClient := oraclesdk.NewClient("https://arkham-dvpn.vercel.app/api/price")
+	oracleClient := oraclesdk.NewClient("https://BASE-URL/api/price")
 
 	// --- Example 1: Fetching from a protected endpoint ---
 	fmt.Println("--- Fetching from protected endpoint ---")
@@ -64,7 +64,7 @@ signedData, err := oracleClient.FetchSignedPrice(token, trustedKey)
 	// The oracle server will fetch raw price data from "https://my-custom-price-api.com/prices"
 	// instead of CoinGecko.
 	customOracleClient := oraclesdk.NewClient(
-		"https://arkham-dvpn.vercel.app/api/price",
+		"https://BASE-URL/api/price",
 		"https://my-custom-price-api.com/prices", // Your custom data source URL
 	)
 	customSignedData, err := customOracleClient.FetchSignedPrice(token, trustedKey)
